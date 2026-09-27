@@ -18,12 +18,16 @@ env/
 Thumbs.db
 desktop.ini
 
+# --- Model weights (downloaded, see README "Setup") ---
+models/
+
 # --- Data: never commit videos or generated outputs ---
 # Raw videos + catalog are versioned by DVC (data/*.dvc), not git.
 data/inbox/*
 data/pose_data/*
 data/segments/*
 data/reference/*
+data/processed/*
 !data/**/.gitkeep
 
 *.mov

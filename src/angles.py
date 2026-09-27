@@ -13,7 +13,18 @@ add more metrics as you and your coach identify what actually matters.
 import numpy as np
 
 
+def _has_world(row, name) -> bool:
+    return f"{name}_wx" in row.index
+
+
 def _get_point(row, name):
+    """
+    3D point for a landmark. Prefers MediaPipe world coordinates (metres,
+    same scale on every axis); falls back to normalized image coordinates
+    for older pose CSVs, which distort angles on non-square video.
+    """
+    if _has_world(row, name):
+        return np.array([row[f"{name}_wx"], row[f"{name}_wy"], row[f"{name}_wz"]], dtype=float)
     return np.array(
         [row[f"{name}_x"], row[f"{name}_y"], row[f"{name}_z"]], dtype=float
     )
@@ -52,9 +63,11 @@ def shoulder_rotation(row, side: str = "RIGHT") -> float:
 def wrist_height_relative_to_shoulder(row, side: str = "RIGHT") -> float:
     """
     Positive = wrist above shoulder, negative = below.
-    (Image y-axis increases downward, so we flip the sign.)
+    (y-axis increases downward, so we flip the sign.) In metres when world
+    coordinates are available, otherwise in normalized image units.
     """
-    return row[f"{side}_SHOULDER_y"] - row[f"{side}_WRIST_y"]
+    axis = "wy" if _has_world(row, side + "_WRIST") else "y"
+    return row[f"{side}_SHOULDER_{axis}"] - row[f"{side}_WRIST_{axis}"]
 
 
 def knee_bend(row, side: str = "RIGHT") -> float:

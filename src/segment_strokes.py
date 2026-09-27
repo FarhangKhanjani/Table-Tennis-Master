@@ -52,7 +52,7 @@ METRICS = {
 }
 
 
-def get_or_extract_pose(video_path: Path, pose_csv_arg, model_complexity: int = 2) -> pd.DataFrame:
+def get_or_extract_pose(video_path: Path, pose_csv_arg) -> pd.DataFrame:
     if pose_csv_arg:
         pose_csv = Path(pose_csv_arg)
         if not pose_csv.exists():
@@ -65,7 +65,7 @@ def get_or_extract_pose(video_path: Path, pose_csv_arg, model_complexity: int = 
         return pd.read_csv(default_csv)
 
     print("No existing pose CSV found, running pose extraction...")
-    return extract_pose_from_video(video_path, default_csv, model_complexity=model_complexity)
+    return extract_pose_from_video(video_path, default_csv)
 
 
 def compute_wrist_speed(df: pd.DataFrame, side: str = "RIGHT", smooth_window: int = 5) -> np.ndarray:

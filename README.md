@@ -16,6 +16,14 @@ source venv/bin/activate  # on Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+Download the MediaPipe pose model (~30 MB, git-ignored) into `models/`:
+
+```bash
+curl -L -o models/pose_landmarker_heavy.task https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task
+```
+
+Expected SHA-256: `64437af838a65d18e5ba7a0d39b465540069bc8aae8308de3e318aad31fcbc7b`
+
 ## Folder structure
 
 ```
@@ -128,6 +136,37 @@ pseudonymous IDs; consent is recorded per player in the catalog.
    on. If not, that's an important finding too — it tells you which
    metrics aren't discriminative and pushes you toward better ones
    (e.g. tracking the paddle, adding hip rotation, contact-point timing).
+
+## Consistency score and comparison to your own best reps
+
+`src/rep_analysis.py` needs no coach labels and no expert data: it compares
+a player's reps with each other.
+
+```bash
+python src/pose_extraction.py data/raw/sha256/00/<hash>.mov --out data/pose_data/<hash12>.csv
+python src/rep_analysis.py data/pose_data/<hash12>.csv --name 2026-09-27_P01_side_near
+```
+
+- Reps are found as peaks of wrist speed **while the wrist is rising** (the
+  forward swing of a drive goes low-back -> high-front; the return swing,
+  often just as fast in shadow strokes, goes down). Implausibly fast/slow
+  peaks and — in side view — moments where the player turns to face the
+  camera (walking to the phone) are rejected.
+- Metrics use MediaPipe **world coordinates** (metres), so angles are not
+  distorted by the 16:9 frame. Low-confidence landmarks are dropped.
+- **Consistency score** = 100 − mean robust spread across reps, as % of each
+  metric's range of motion.
+- **Reference reps** = your 3 most *typical* reps by default, or the reps you
+  pass with `--reference-reps` (e.g. the ones your coach marks as good).
+  Typical is not the same as correct.
+- Outputs in `data/processed/rep_analysis/<name>/`: `detection_*.png` (check
+  first: one red dot per forward swing), `reps_overlay.png`,
+  `rep_scores.png`, `reps.csv`, `summary.json`.
+- **Film the side view from the hitting-arm side** (right side for a
+  right-hander). From the other side the body hides the hitting arm and
+  tracking fails — the analysis then (correctly) finds almost no usable reps.
+- The hitting arm is set with `--side` (default `RIGHT`), not auto-detected:
+  the occluded far arm jitters and would look like the faster one.
 
 ## Known limitations to expect (and document)
 
