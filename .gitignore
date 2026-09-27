@@ -1,0 +1,34 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Environments ---
+venv/
+.venv/
+env/
+.env
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Data: never commit videos or generated outputs ---
+# Raw videos live in object storage (see docs); only folder placeholders are tracked.
+data/raw_clips/*
+data/pose_data/*
+data/segments/*
+data/reference/*
+!data/**/.gitkeep
+
+*.mov
+*.MOV
+*.mp4
+*.MP4
+*.avi
+*.mkv

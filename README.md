@@ -1,0 +1,187 @@
+# Table Tennis Vision Trainer — Research Starter (Phase 1-2)
+
+Starter pipeline for the video-based stroke analysis research project:
+record a stroke, extract body pose over time, and visualize joint metrics
+to compare against a coach's assessment.
+
+This covers **Phase 1 (data collection) and Phase 2 (pose extraction +
+visualization)** from the roadmap. Phase 3 (rule-based / reference
+comparison against coach ratings) builds directly on top of this.
+
+## Setup
+
+```bash
+python -m venv venv
+source venv/bin/activate  # on Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+## Folder structure
+
+```
+ttrainer-vision/
+├── data/
+│   ├── raw_clips/        # your recorded video files (.mp4)
+│   ├── pose_data/        # generated: pose CSVs + metric plots
+│   └── coach_notes/      # coach ratings per clip (see template.csv)
+├── src/
+│   ├── pose_extraction.py   # video -> pose landmark CSV
+│   ├── angles.py             # joint angle / metric calculations
+│   └── visualize.py          # pose CSV -> metric plots + metric CSV
+└── requirements.txt
+```
+
+## Recording guidance (Phase 1)
+
+- **Camera angle:** side-on to the player, consistent across all clips.
+  This is the angle that makes elbow/shoulder/wrist trajectories most
+  interpretable — front-on view loses a lot of the arm's depth motion.
+- **Frame rate:** 60fps minimum, 120fps if your phone/camera supports it.
+  Table tennis strokes are fast; at 30fps you will lose the contact
+  moment to motion blur or miss it between frames entirely.
+- **Consistency:** same stroke, same rough distance from camera, same
+  lighting where possible — keeps early comparisons cleaner while you're
+  validating whether the signal is even meaningful.
+- **Labeling:** name clips predictably (e.g. `forehand_01.mp4`,
+  `forehand_02.mp4`) so they match rows in `data/coach_notes/template.csv`.
+
+## Running the pipeline
+
+1. Drop a video into `data/raw_clips/`.
+2. Extract pose landmarks:
+   ```bash
+   python src/pose_extraction.py data/raw_clips/forehand_01.mp4
+   ```
+   This writes `data/pose_data/forehand_01.csv` — one row per frame with
+   x/y/z/visibility for all 33 MediaPipe body landmarks.
+3. Compute and plot metrics:
+   ```bash
+   python src/visualize.py data/pose_data/forehand_01.csv
+   ```
+   This writes:
+   - `data/pose_data/forehand_01_metrics.png` — elbow angle, shoulder
+     rotation, and wrist height over time
+   - `data/pose_data/forehand_01_metrics.csv` — the same metrics as data,
+     for later comparison against coach ratings
+4. Have your coach fill in `data/coach_notes/template.csv` for the same
+   clips (rating 1-5, flagged issue, free-text notes).
+5. **Eyeball check (do this before building anything fancier):** open a
+   few `_metrics.png` plots next to the coach's notes for the same clips.
+   Does a low-rated clip show a visibly different elbow-angle pattern
+   than a high-rated one? If yes, you have a real signal to build Phase 3
+   on. If not, that's an important finding too — it tells you which
+   metrics aren't discriminative and pushes you toward better ones
+   (e.g. tracking the paddle, adding hip rotation, contact-point timing).
+
+## Known limitations to expect (and document)
+
+- MediaPipe is trained on general human motion, not fast racket sports —
+  expect visibility drops or noisy landmarks around the contact moment.
+- The paddle itself isn't tracked by body pose models — if contact
+  timing/paddle angle matters (it will), you'll need a separate
+  detector or manual annotation for that.
+- `shoulder_rotation` here is a 2D proxy (HIP-SHOULDER-ELBOW angle), not
+  true 3D torso rotation — good enough to start, but worth flagging as a
+  simplification if this becomes a written report.
+
+## Phase 1b: segmenting multi-rep shadow videos (now included)
+
+If a video has you performing the same shadow stroke repeatedly with a
+brief pause at ready position between reps, `segment_strokes.py`
+automatically finds those pauses and splits the video into individual
+repetitions — so each rep gets its own angle data instead of one long
+blended signal.
+
+```bash
+python src/segment_strokes.py data/raw_clips/side_shadow_01.mp4
+```
+
+This will:
+- Extract pose (or reuse an existing pose CSV if one already exists at
+  `data/pose_data/<stem>.csv`)
+- Compute wrist speed over time and detect the low-speed pauses between
+  reps
+- Save per-rep metrics to `data/segments/side_shadow_01/rep_01_metrics.csv`,
+  `rep_02_metrics.csv`, etc. (elbow angle, shoulder rotation, wrist
+  height, and wrist speed itself)
+- Save `overview.png` — **check this first**: it plots wrist speed with
+  the detected boundaries marked as vertical lines, so you can confirm
+  they actually line up with real reps before trusting the segments
+- Save `segments_summary.json` with start/end times per rep
+
+Add `--export-clips` to also save a trimmed `.mp4` per detected rep —
+useful later for coach review or as candidate reference clips.
+
+**This is heuristic, not ground truth.** If `overview.png` shows missed
+or spurious boundaries, tune:
+- `--min-distance-sec` (default 0.5) — minimum time between reps; raise
+  it if your reps are slower/more deliberate
+- `--prominence` (default 0.005) — how deep a speed dip must be to
+  count as a real pause; lower it if pauses aren't being detected,
+  raise it if noise is creating false boundaries
+
+**Note on hand-posture detail:** this tracks the wrist as a single
+point (via MediaPipe Pose) — good for swing trajectory and arm angles,
+but it doesn't see fingers or grip. If you want literal grip/finger-level
+posture rather than wrist/arm trajectory, that needs MediaPipe Hands as
+an additional layer, not yet in this starter.
+
+## Phase 3: comparing against a reference (now included)
+
+This is comparison against a reference profile, **not** model training —
+with a handful of clips there isn't enough data to train something that
+would generalize. See `src/reference_profile.py` and
+`src/compare_to_reference.py`.
+
+**Important assumption:** reference and test clips should each be
+trimmed to roughly one stroke (backswing through follow-through). The
+scripts don't detect stroke boundaries for you yet.
+
+1. Pick 1-3 coach-rated "clean technique" clips and run pose extraction
+   on each (as in Phase 2).
+2. Build a reference profile:
+   ```bash
+   python src/reference_profile.py \
+       data/pose_data/forehand_ref_01.csv data/pose_data/forehand_ref_02.csv \
+       --out data/reference/forehand_drive_profile.csv
+   ```
+   With 2+ clips, each is DTW-aligned to the first clip's timing, then
+   averaged — giving a mean curve plus a std band (your tolerance
+   range) for each metric. With only 1 clip, a small fixed tolerance is
+   used instead since there's no cross-clip variance to measure.
+
+3. Compare a new/test clip against that profile:
+   ```bash
+   python src/compare_to_reference.py \
+       data/pose_data/forehand_test_01.csv \
+       data/reference/forehand_drive_profile.csv
+   ```
+   This DTW-aligns the test clip's metrics onto the reference's time
+   axis (so timing differences between clips don't get mistaken for
+   technique differences), then reports:
+   - An overall deviation score per metric (mean |z-score| vs. the
+     reference band)
+   - Flagged time segments where the deviation exceeds a threshold
+     (default: |z| > 1.5), with real timestamps
+   - A comparison plot (`*_comparison.png`) and a JSON report
+     (`*_comparison.json`)
+
+4. **Validate against the coach.** For each test clip, compare the
+   flagged segments/deviation score against what your coach
+   independently noted in `data/coach_notes/`. Do high-deviation clips
+   line up with what the coach flagged as technically off? This
+   agreement (or disagreement) is the actual research finding — and is
+   what tells you whether `elbow_angle` / `shoulder_rotation` /
+   `wrist_height` are the right metrics, or whether you need to add
+   others (e.g. paddle angle, hip rotation, contact timing).
+
+## Future work (not yet in this starter)
+
+- If you eventually collect a much larger labeled dataset (50-100+
+  rated clips per stroke, many players), a lightweight learned model
+  (pose-trajectory features \u2192 predicted rating) becomes feasible and
+  could replace/complement the DTW+threshold approach.
+- Automatic stroke-boundary detection, so clips don't need manual
+  trimming.
+- Paddle tracking (separate from body pose) if contact angle/timing
+  turns out to matter as much as coaches typically say it does.
