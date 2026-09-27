@@ -1,5 +1,7 @@
 [core]
     autostage = true
     remote = onedrive
+[cache]
+    type = "hardlink,copy"
 ['remote "onedrive"']
     url = C:\Users\ASUS\OneDrive\TTM-storage

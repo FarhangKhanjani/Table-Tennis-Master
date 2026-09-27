@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS videos (
     recorded_at       TEXT,                      -- from file metadata when available
     session_id        TEXT NOT NULL REFERENCES sessions(session_id),
     stroke_type       TEXT NOT NULL,             -- e.g. forehand_drive
-    camera_angle      TEXT NOT NULL,             -- side / front / back / overhead
+    camera_angle      TEXT NOT NULL CHECK (camera_angle IN ('side', 'front', 'diagonal')),
+    take_id           TEXT,                      -- groups clips filmed simultaneously from different cameras
     qa_warnings       TEXT,                      -- '; '-separated protocol violations
     notes             TEXT,
     ingested_at       TEXT NOT NULL DEFAULT (datetime('now'))
@@ -55,4 +56,5 @@ CREATE TABLE IF NOT EXISTS annotations (
 
 CREATE INDEX IF NOT EXISTS idx_videos_session ON videos(session_id);
 CREATE INDEX IF NOT EXISTS idx_videos_stroke  ON videos(stroke_type);
+CREATE INDEX IF NOT EXISTS idx_videos_take    ON videos(take_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_video ON annotations(video_sha256);

@@ -36,7 +36,7 @@ DB_PATH = REPO_ROOT / "data" / "catalog.db"
 SCHEMA_PATH = REPO_ROOT / "db" / "schema.sql"
 
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".avi", ".mkv"}
-CAMERA_ANGLES = ("side", "front", "back", "overhead")
+CAMERA_ANGLES = ("side", "front", "diagonal")
 
 # Recording-protocol thresholds (see README, "Recording guidance")
 MIN_FPS = 60
@@ -138,13 +138,13 @@ def ingest_one(conn, src: Path, args, session_id: str) -> str:
             conn.execute(
                 """INSERT INTO videos (sha256, storage_path, original_filename, size_bytes,
                        container, codec, width, height, fps, duration_s, recorded_at,
-                       session_id, stroke_type, camera_angle, qa_warnings, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       session_id, stroke_type, camera_angle, take_id, qa_warnings, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     digest, dest.relative_to(REPO_ROOT).as_posix(), src.name, src.stat().st_size,
                     meta["container"], meta["codec"], meta["width"], meta["height"],
                     meta["fps"], meta["duration_s"], meta["recorded_at"],
-                    session_id, args.stroke, args.angle,
+                    session_id, args.stroke, args.angle, args.take,
                     "; ".join(warnings) or None, args.notes,
                 ),
             )
@@ -180,6 +180,8 @@ def main():
     parser.add_argument("--session-date", required=True, help="Recording date, YYYY-MM-DD")
     parser.add_argument("--stroke", required=True, help="Stroke type, e.g. forehand_drive")
     parser.add_argument("--angle", required=True, choices=CAMERA_ANGLES, help="Camera angle")
+    parser.add_argument("--take", default=None,
+                        help="Take ID shared by clips filmed simultaneously from different angles, e.g. T01")
     parser.add_argument("--consent", action="store_true", help="Player has given signed consent")
     parser.add_argument("--notes", default=None, help="Free-text note stored on every ingested video")
     parser.add_argument("--keep", action="store_true", help="Do not delete originals after ingest")
