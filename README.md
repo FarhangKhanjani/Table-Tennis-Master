@@ -19,17 +19,72 @@ pip install -r requirements.txt
 ## Folder structure
 
 ```
-ttrainer-vision/
+Table-Tennis-Master/
 ├── data/
-│   ├── raw_clips/        # your recorded video files (.mp4)
+│   ├── inbox/            # drop new videos here (temporary, git-ignored)
+│   ├── raw/              # immutable source videos, named by SHA-256 (DVC-tracked)
+│   ├── catalog.db        # SQLite metadata catalog (DVC-tracked)
 │   ├── pose_data/        # generated: pose CSVs + metric plots
+│   ├── segments/         # generated: per-rep segments
+│   ├── reference/        # generated: reference technique profiles
 │   └── coach_notes/      # coach ratings per clip (see template.csv)
+├── db/
+│   └── schema.sql        # catalog schema: players, sessions, videos, annotations
 ├── src/
+│   ├── ingest_video.py      # inbox -> hash, probe, QA, store, catalog
+│   ├── verify_raw.py        # integrity check of data/raw vs. catalog
 │   ├── pose_extraction.py   # video -> pose landmark CSV
 │   ├── angles.py             # joint angle / metric calculations
 │   └── visualize.py          # pose CSV -> metric plots + metric CSV
 └── requirements.txt
 ```
+
+## Data management
+
+Source videos are never committed to git. Each part lives where it belongs:
+
+| What | Where |
+|---|---|
+| Code, schema, pipeline config | Git / GitHub |
+| Raw video bytes | `data/raw/`, versioned with [DVC](https://dvc.org), stored in the DVC remote |
+| Video metadata (player, session, stroke, fps, QA, ...) | `data/catalog.db` (SQLite, schema in `db/schema.sql`) |
+
+A video's identity is the **SHA-256 of its file bytes**. Files are stored as
+`data/raw/sha256/<first 2 hex>/<hash>.<ext>` and are never edited — all
+derived data (pose CSVs, segments, reports) is regenerated from them.
+
+**Getting the data after cloning:**
+
+```bash
+dvc pull                    # downloads data/raw and data/catalog.db
+python src/verify_raw.py    # confirms every file matches its hash
+```
+
+**Adding new videos:**
+
+1. Copy the *original* files off the phone into `data/inbox/` (USB or a
+   sync that keeps originals — messengers re-encode and destroy quality).
+2. Ingest them:
+   ```bash
+   python src/ingest_video.py data/inbox/ --player P01 --session-date 2026-09-14 \
+       --stroke forehand_drive --angle side --consent
+   ```
+   This hashes each file, skips duplicates, reads fps/resolution/duration
+   with `ffprobe`, records protocol violations (e.g. fps < 60) in
+   `qa_warnings`, copies the file into `data/raw/`, verifies the copy, adds
+   it to the catalog, and removes it from the inbox.
+3. Version and upload:
+   ```bash
+   dvc add data/raw data/catalog.db
+   git commit -m "Add session 2026-09-14 (P01): 6 forehand clips"
+   dvc push
+   git push
+   ```
+4. Run `dvc status -c` — only once it reports everything in sync, delete
+   the clips from the phone.
+
+Requires `ffmpeg` (for `ffprobe`) on `PATH`. Players are identified only by
+pseudonymous IDs; consent is recorded per player in the catalog.
 
 ## Recording guidance (Phase 1)
 
@@ -42,15 +97,16 @@ ttrainer-vision/
 - **Consistency:** same stroke, same rough distance from camera, same
   lighting where possible — keeps early comparisons cleaner while you're
   validating whether the signal is even meaningful.
-- **Labeling:** name clips predictably (e.g. `forehand_01.mp4`,
-  `forehand_02.mp4`) so they match rows in `data/coach_notes/template.csv`.
+- **Labeling:** no need to rename files — ingest records player, session,
+  stroke and camera angle in the catalog (see "Data management").
 
 ## Running the pipeline
 
-1. Drop a video into `data/raw_clips/`.
+1. Ingest the video (see "Data management") and look up its path in
+   `data/raw/` via the catalog.
 2. Extract pose landmarks:
    ```bash
-   python src/pose_extraction.py data/raw_clips/forehand_01.mp4
+   python src/pose_extraction.py data/raw/sha256/<xx>/<hash>.mov --out data/pose_data/forehand_01.csv
    ```
    This writes `data/pose_data/forehand_01.csv` — one row per frame with
    x/y/z/visibility for all 33 MediaPipe body landmarks.
@@ -93,7 +149,7 @@ repetitions — so each rep gets its own angle data instead of one long
 blended signal.
 
 ```bash
-python src/segment_strokes.py data/raw_clips/side_shadow_01.mp4
+python src/segment_strokes.py data/raw/sha256/<xx>/<hash>.mov
 ```
 
 This will:
@@ -179,7 +235,7 @@ scripts don't detect stroke boundaries for you yet.
 
 - If you eventually collect a much larger labeled dataset (50-100+
   rated clips per stroke, many players), a lightweight learned model
-  (pose-trajectory features \u2192 predicted rating) becomes feasible and
+  (pose-trajectory features -> predicted rating) becomes feasible and
   could replace/complement the DTW+threshold approach.
 - Automatic stroke-boundary detection, so clips don't need manual
   trimming.

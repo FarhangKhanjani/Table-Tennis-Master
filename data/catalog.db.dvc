@@ -1,0 +1,5 @@
+outs:
+- md5: 4ceeecacd89e2437357aab0a1ae628b9
+  size: 53248
+  hash: md5
+  path: catalog.db

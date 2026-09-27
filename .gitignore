@@ -19,8 +19,8 @@ Thumbs.db
 desktop.ini
 
 # --- Data: never commit videos or generated outputs ---
-# Raw videos live in object storage (see docs); only folder placeholders are tracked.
-data/raw_clips/*
+# Raw videos + catalog are versioned by DVC (data/*.dvc), not git.
+data/inbox/*
 data/pose_data/*
 data/segments/*
 data/reference/*
