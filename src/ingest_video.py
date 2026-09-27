@@ -24,6 +24,7 @@ Usage:
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -94,6 +95,9 @@ def qa_checks(meta: dict) -> list[str]:
 
 def connect_db() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # DVC hardlinks tracked files read-only; the catalog must be writable.
+    if DB_PATH.exists() and not os.access(DB_PATH, os.W_OK):
+        subprocess.run(["dvc", "unprotect", str(DB_PATH)], cwd=REPO_ROOT, check=True)
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     return conn
